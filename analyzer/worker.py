@@ -3,13 +3,14 @@ Analyzer: берет необработанные raw_items классифици
 Вывод аналитики Hermes делает через шлюз Telegram
 """
 
-import logging
 from __future__ import annotations
+import logging
 import json
 import re
 import os
 import logging
 import json
+import time
 
 from openai import OpenAI
 from common.db import connect, fetch_unanalyzed, save_finding
@@ -30,7 +31,7 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 client = OpenAI(base_url=BASE_URL, api_key=API_KEY)
 
 
-def parse(content: str) -> dict | None:
+def _parse(content: str) -> dict | None:
     m = _JSON_RE.search(content or "")
     if not m:
         return None
@@ -38,3 +39,59 @@ def parse(content: str) -> dict | None:
         return json.loads(m.group(0))
     except json.JSONDecodeError:
         return None
+
+
+def classify(text: str) -> dict | None:
+    resp = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": user_payload(text)},
+        ],
+        temperature=0,
+        max_tokens=400,
+    )
+    data = _parse(resp.choices[0].message.content)
+    if not data:
+        return None
+    if data.get("kind") not in ("fraud", "negative_review", "other"):
+        data["kind"] = "other"
+    return data
+
+
+def run_batch() -> int:
+    processed = 0
+    with connect() as conn:
+        items = fetch_unanalyzed(conn, BATCH)
+        for it in items:
+            try:
+                finding = classify(it["text"])
+            except Exception as e:
+                log.warning("item %s: llm ошибка %s", it["id"], e)
+                continue
+            if finding is None:
+                log.warning("item %s: модель вернула невалидный json", it["id"])
+                continue
+            save_finding(conn, it["id"], finding, MODEL)
+            processed += 1
+        conn.comit()
+    return processed
+
+
+def main() -> None:
+    if not (BASE_URL and API_KEY and MODEL):
+        log.error("Cloud.ru url, cloud.ru api-key and model не заданы")
+        return
+    log.info("analyzer запущен (model=%s, batch=%d)", MODEL, BATCH)
+    while True:
+        try:
+            n = run_batch()
+            if n:
+                log.info("Обработано %d записей", n)
+        except Exception as e:
+            log.error("батч упал: %s", e)
+        time.sleep(INTERVAL)
+
+
+if __name__ == "main":
+    main()
