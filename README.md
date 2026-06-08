@@ -83,37 +83,6 @@ UPDATE sources SET status='active', approved_by='you'
 WHERE platform='max' AND handle='<канал>';
 ```
 
-## Структура
-sber-monitor/
-├── docker-compose.yml          # 4 сервиса: postgres, tiktok-collector, max-collector, analyzer
-├── .env.example                # шаблон окружения (на сервере → .env, в git не коммитим)
-├── .gitignore                  # секреты, pgdata, __pycache__ и т.д.
-├── README.md                   # архитектура, запуск, риски
-│
-├── db/
-│   └── schema.sql              # sources, raw_items, findings + view'ы v_fraud / v_reviews
-│
-├── common/
-│   └── db.py                   # общий слой БД: коннект, дедуп, хеш автора, запись находок
-│
-├── collectors/
-│   ├── tiktok/
-│   │   ├── Dockerfile          # на базе Playwright-образа
-│   │   ├── requirements.txt    # TikTokApi, psycopg
-│   │   └── collector.py        # скрап по ключам про Сбер → raw_items (read-only)
-│   │
-│   └── max/
-│       ├── Dockerfile
-│       ├── requirements.txt    # psycopg, aiohttp
-│       ├── client.py           # userbot-клиент MAX, read-only (сессия — след. шаг)
-│       └── collector.py        # читает только status='active' источники → raw_items
-│
-└── analyzer/
-    ├── Dockerfile
-    ├── requirements.txt        # openai, psycopg
-    ├── prompt.py               # промпт классификации (fraud / negative_review / other)
-    └── worker.py               # raw_items → Cloud.ru LLM → findings
-
 ## Юридическое / риски
 
 - MAX userbot нарушает ToS MAX и рискует баном аккаунта — используется **burner**,
