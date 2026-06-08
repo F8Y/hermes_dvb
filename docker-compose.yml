@@ -1,0 +1,59 @@
+# ======================================================================
+#  hermes-dvb — v1 (собирать на сервере: amd64)
+#    postgres        — хранилище (raw + findings)
+#    tiktok-collector — скрап TikTok по ключам про Сбер (read-only)
+#    max-collector    — userbot MAX, отдельный аккаунт, read-only
+#    analyzer         — классификация фрод/негатив через Cloud.ru LLM
+#
+#  Запуск:  docker compose up -d --build
+#  Логи:    docker compose logs -f analyzer
+# ======================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tiktok-collector:
+    build:
+      context: .
+      dockerfile: collectors/tiktok/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  max-collector:
+    build:
+      context: .
+      dockerfile: collectors/max/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  analyzer:
+    build:
+      context: .
+      dockerfile: analyzer/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# pgdata лежит локально на сервере (в .gitignore). Бэкап = pg_dump этой папки.
