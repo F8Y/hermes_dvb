@@ -21,6 +21,7 @@ venv/
 
 # Data
 pgdata/
+hermes_data/
 logs/
 *.log
 dumps/
