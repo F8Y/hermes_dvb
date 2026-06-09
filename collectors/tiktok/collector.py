@@ -1,6 +1,7 @@
-"""
-TikTok Collector ищет публичные видео по ключам и пишет в raw_items
-READ_ONLY: полный запрет на постинг
+"""TikTok-коллектор: ищет публичные видео по ключам и пишет в raw_items.
+
+READ-ONLY: только чтение публичных данных. Ничего не постит.
+Требует ms_token (из cookies tiktok.com) и residential-прокси для стабильности.
 """
 
 from __future__ import annotations
@@ -14,13 +15,13 @@ from TikTokApi import TikTokApi
 
 from common.db import connect, get_or_create_source, insert_raw_item
 
-logging.baseConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("tiktok")
 
 MS_TOKEN = os.environ.get("TIKTOK_MS_TOKEN") or None
 PROXY = os.environ.get("TIKTOK_PROXY") or None
 KEYWORDS = [
-    k.strip() for k in os.environ.get("TIKTIK_KEYWORDS", "").split(",") if k.strip()
+    k.strip() for k in os.environ.get("TIKTOK_KEYWORDS", "").split(",") if k.strip()
 ]
 MAX_PER_RUN = int(os.environ.get("TIKTOK_MAX_PER_RUN", "50"))
 INTERVAL = int(os.environ.get("TIKTOK_INTERVAL", "3600"))
@@ -82,23 +83,23 @@ async def run_once(api: TikTokApi) -> None:
                 tag,
                 title=kw,
                 status="active",
-                discovered_by="sed",
+                discovered_by="seed",
             )
             stored = 0
             try:
                 async for video in api.hashtag(name=tag).videos(count=MAX_PER_RUN):
                     if _store_video(conn, source_id, video):
                         stored += 1
-                    conn.commit()
-                    log.info("tag #%s: новых %d", tag, stored)
-            except Exception as e:
+                conn.commit()
+                log.info("tag #%s: новых %d", tag, stored)
+            except Exception as e:  # noqa: BLE001
                 conn.rollback()
                 log.warning("tag #%s: ошибка %s", tag, e)
 
 
 async def main() -> None:
     if not KEYWORDS:
-        log.error("Ключевые слова не заданы в .env")
+        log.error("TIKTOK_KEYWORDS пуст — нечего искать")
         return
     while True:
         try:
@@ -112,11 +113,11 @@ async def main() -> None:
                     headless=True,
                 )
                 await run_once(api)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.error("цикл упал: %s", e)
-        log.info("сон %d сек:", INTERVAL)
+        log.info("сон %d сек", INTERVAL)
         await asyncio.sleep(INTERVAL)
 
 
-if __name__ == "main":
+if __name__ == "__main__":
     asyncio.run(main())

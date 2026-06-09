@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import hashlib
 import json
 import os
 import re
 from contextlib import contextmanager
 from typing import Any, Iterable
+
 import psycopg
 from psycopg.rows import dict_row
 
@@ -14,12 +16,13 @@ _WS_RE = re.compile(r"\s+")
 def _dsn() -> str:
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
-        raise RuntimeError("DATABASE_URL не задан в файле окружения - .env")
+        raise RuntimeError("DATABASE_URL не задан в окружении")
     return dsn
 
 
 @contextmanager
 def connect():
+    """Контекст-коннект с dict-строками и автокоммитом по выходу."""
     conn = psycopg.connect(_dsn(), row_factory=dict_row)
     try:
         yield conn
@@ -43,9 +46,7 @@ def content_hash(platform: str, text: str) -> str:
 def author_hash(author_id: str | None) -> str | None:
     if not author_id:
         return None
-    salt = os.environ.get("AUTHOR_HASH_SALT")
-    if not salt:
-        raise RuntimeError("AUTHOR_HASH_SALT не задан")
+    salt = os.environ.get("AUTHOR_HASH_SALT", "")
     return hashlib.sha256(f"{salt}:{author_id}".encode("utf-8")).hexdigest()
 
 
@@ -66,7 +67,7 @@ def get_or_create_source(
             ON CONFLICT (platform, kind, handle) DO UPDATE SET updated_at = now()
             RETURNING id
             """,
-            (platform, kind, handle, title, discovered_by),
+            (platform, kind, handle, title, status, discovered_by),
         )
         return cur.fetchone()["id"]
 
@@ -156,7 +157,7 @@ def save_finding(conn, item_id: int, finding: dict, model: str) -> None:
 
 
 def list_active_sources(conn, platform: str) -> list[dict]:
-    with conn.curcor() as cur:
+    with conn.cursor() as cur:
         cur.execute(
             """
             SELECT id, kind, handle, title FROM sources

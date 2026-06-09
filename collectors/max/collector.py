@@ -1,7 +1,8 @@
-"""
-MAX Collector READ_ONLY
-Так как в MAX очень агрессивные блокировки, коллектор парсит только верифицированные человеком источники
-Источники, которые нашел Hermes попадают в candidates и ожидают верификации
+"""MAX-коллектор: читает ТОЛЬКО подтверждённые человеком источники (status='active')
+и пишет сообщения в raw_items. Ничего не отправляет.
+
+Источники со статусом 'candidate' (предложенные агентом) НЕ читаются, пока
+человек не переведёт их в 'active' — защита от бана и мусора.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ async def poll_once(client: MaxUserbotClient) -> None:
     with connect() as conn:
         sources = list_active_sources(conn, "max")
         if not sources:
-            log.info("Нет активных источников MAX")
+            log.info("нет активных источников MAX (ждём подтверждения человеком)")
             return
         for src in sources:
             try:
@@ -31,9 +32,10 @@ async def poll_once(client: MaxUserbotClient) -> None:
             except NotImplementedError as e:
                 log.warning("источник %s: %s", src["handle"], e)
                 return
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log.warning("источник %s: ошибка чтения %s", src["handle"], e)
                 continue
+
             stored = 0
             for m in messages:
                 if not (m.text or "").strip():
@@ -61,10 +63,10 @@ async def main() -> None:
     while True:
         try:
             await poll_once(client)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             log.error("цикл упал: %s", e)
         await asyncio.sleep(POLL_INTERVAL)
 
 
-if __name__ == "main":
+if __name__ == "__main__":
     asyncio.run(main())

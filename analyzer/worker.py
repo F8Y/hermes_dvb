@@ -1,24 +1,21 @@
-"""
-Analyzer: берет необработанные raw_items классифицирует через Hermes и пишет результат в findings
-Вывод аналитики Hermes делает через шлюз Telegram
+"""Analyzer: берёт необработанные raw_items, классифицирует через Cloud.ru
+(OpenAI-совместимый endpoint) и пишет результат в findings.
 """
 
 from __future__ import annotations
-import logging
+
 import json
-import re
+import logging
 import os
-import logging
-import json
+import re
 import time
 
 from openai import OpenAI
+
 from common.db import connect, fetch_unanalyzed, save_finding
 from prompt import SYSTEM, user_payload
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("analyzer")
 
 BASE_URL = os.environ.get("CLOUDRU_BASE_URL")
@@ -54,6 +51,7 @@ def classify(text: str) -> dict | None:
     data = _parse(resp.choices[0].message.content)
     if not data:
         return None
+    # лёгкая нормализация
     if data.get("kind") not in ("fraud", "negative_review", "other"):
         data["kind"] = "other"
     return data
@@ -66,32 +64,32 @@ def run_batch() -> int:
         for it in items:
             try:
                 finding = classify(it["text"])
-            except Exception as e:
-                log.warning("item %s: llm ошибка %s", it["id"], e)
+            except Exception as e:  # noqa: BLE001
+                log.warning("item %s: ошибка LLM %s", it["id"], e)
                 continue
             if finding is None:
-                log.warning("item %s: модель вернула невалидный json", it["id"])
+                log.warning("item %s: модель вернула невалидный JSON", it["id"])
                 continue
             save_finding(conn, it["id"], finding, MODEL)
             processed += 1
-        conn.comit()
+        conn.commit()
     return processed
 
 
 def main() -> None:
     if not (BASE_URL and API_KEY and MODEL):
-        log.error("Cloud.ru url, cloud.ru api-key and model не заданы")
+        log.error("CLOUDRU_BASE_URL / CLOUDRU_API_KEY / CLOUDRU_MODEL не заданы")
         return
     log.info("analyzer запущен (model=%s, batch=%d)", MODEL, BATCH)
     while True:
         try:
             n = run_batch()
             if n:
-                log.info("Обработано %d записей", n)
-        except Exception as e:
+                log.info("обработано %d items", n)
+        except Exception as e:  # noqa: BLE001
             log.error("батч упал: %s", e)
         time.sleep(INTERVAL)
 
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()
