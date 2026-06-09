@@ -1,13 +1,25 @@
 # ======================================================================
-#  hermes-dvb — v1 (собирать на сервере: amd64)
-#    postgres        — хранилище (raw + findings)
-#    tiktok-collector — скрап TikTok по ключам про Сбер (read-only)
-#    max-collector    — userbot MAX, отдельный аккаунт, read-only
-#    analyzer         — классификация фрод/негатив через Cloud.ru LLM
+#  hermes_dvb — стек (собирать на сервере: amd64)
+#    postgres         — хранилище (raw + findings)
+#    tiktok-collector — скрап TikTok (read-only)
+#    max-collector    — userbot MAX, отдельный аккаунт, ВАЖНО: личный аккаунт (read-only)
+#    analyzer         — массовая классификация (дешёвая модель Cloud.ru)
+#    hermes           — агент: gateway/Telegram, поиск, скиллы (средняя модель)
 #
-#  Запуск:  docker compose up -d --build
-#  Логи:    docker compose logs -f analyzer
+#  Лимиты ресурсов захардкожены под стек: # гарантированно сидеть ниже 40-50% машины.
+#
+#  Запуск БД:        docker compose up -d --build postgres
+#  Запуск всего:     docker compose up -d --build
+#  Логи:             docker compose logs -f <service>
 # ======================================================================
+
+name: hermes_dvb
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   postgres:
@@ -25,6 +37,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    cpus: 0.5
+    mem_limit: 512m
+    logging: *default-logging
 
   tiktok-collector:
     build:
@@ -35,6 +50,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    cpus: 1.0
+    mem_limit: 1536m # Chromium/Playwright прожорлив — самый тяжёлый сервис
+    logging: *default-logging
 
   max-collector:
     build:
@@ -45,6 +63,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    cpus: 0.25
+    mem_limit: 256m
+    logging: *default-logging
 
   analyzer:
     build:
@@ -55,5 +76,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    cpus: 0.25
+    mem_limit: 384m
+    logging: *default-logging
 
-# pgdata лежит локально на сервере (в .gitignore). Бэкап = pg_dump этой папки.
+  # Агент. Память/конфиг/скиллы — в ./hermes_data (bind-mount, durable).
+  # Секреты Hermes (ключ модели, токен Telegram) задаются мастером setup
+  # в ./hermes_data, НЕ через наш .env. Перед up нужно один раз прогнать setup.
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes_dvb_agent
+    restart: unless-stopped
+    command: gateway run
+    volumes:
+      - ./hermes_data:/opt/data # ВАЖНО: ровно /opt/data, иначе 0 скиллов
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cpus: 1.0
+    mem_limit: 1024m
+    logging: *default-logging
