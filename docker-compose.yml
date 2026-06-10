@@ -2,11 +2,13 @@
 #  hermes_dvb — стек (собирать на сервере: amd64)
 #    postgres         — хранилище (raw + findings)
 #    tiktok-collector — скрап TikTok (read-only)
-#    max-collector    — userbot MAX, отдельный аккаунт, ВАЖНО: личный аккаунт (read-only)
+#    max-collector    — userbot MAX, отдельный аккаунт, read-only
 #    analyzer         — массовая классификация (дешёвая модель Cloud.ru)
 #    hermes           — агент: gateway/Telegram, поиск, скиллы (средняя модель)
 #
-#  Лимиты ресурсов захардкожены под стек: гарантированно сидеть ниже 40-50% машины.
+#  Лимиты ресурсов и логов заданы под общий тестовый сервер.
+#  Память/данные durable: ./pgdata и ./hermes_data — bind-mount на хосте,
+#  переживают prune и реап контейнеров.
 #
 #  Запуск БД:        docker compose up -d --build postgres
 #  Запуск всего:     docker compose up -d --build
@@ -50,8 +52,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    cpus: 1.0
-    mem_limit: 1024m # Chromium/Playwright прожорлив — самый тяжёлый сервис
+    cpus: 0.5
+    mem_limit: 1024m # Chromium прожорлив, но скрапит вспышками и спит между ними
     logging: *default-logging
 
   max-collector:
@@ -88,11 +90,17 @@ services:
     container_name: hermes_dvb_agent
     restart: unless-stopped
     command: gateway run
+    # Сеть хоста: трафик к Telegram идёт хостовым путём (OUTPUT), который
+    # достаёт api.telegram.org, в отличие от FORWARD-пути контейнеров.
+    network_mode: host
     volumes:
       - ./hermes_data:/opt/data # ВАЖНО: ровно /opt/data, иначе 0 скиллов
     depends_on:
       postgres:
         condition: service_healthy
-    cpus: 1.0
+    cpus: 0.5
     mem_limit: 1024m
     logging: *default-logging
+
+# = 3200 МБ (~43%). Это ПОТОЛКИ, не резерв: коллекторы бьют вспышками, hermes
+# почти всё время простаивает, так что реальное потребление заметно ниже.
