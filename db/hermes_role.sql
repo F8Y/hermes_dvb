@@ -11,7 +11,8 @@ DO $$ BEGIN IF NOT EXISTS (
     SELECT
     FROM pg_roles
     WHERE rolname = 'hermes_ro'
-) THEN CREATE ROLE hermes_ro LOGIN PASSWORD 'CHANGE_ME_RO';
+) THEN CREATE ROLE hermes_ro LOGIN PASSWORD 'CHANGE_ME';
+-- Чтобы не хардкодить пароль роли - задается через nano
 END IF;
 END $$;
 GRANT CONNECT ON DATABASE dvbmon TO hermes_ro;
