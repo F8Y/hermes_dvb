@@ -1,10 +1,12 @@
 # ======================================================================
 #  hermes_dvb — стек (собирать на сервере: amd64)
-#    postgres         — хранилище (raw + findings)
+#    postgres         — хранилище собранного (raw_items, sources)
 #    tiktok-collector — скрап TikTok (read-only)
 #    max-collector    — userbot MAX, отдельный аккаунт, read-only
-#    analyzer         — массовая классификация (дешёвая модель Cloud.ru)
-#    hermes           — агент: gateway/Telegram, поиск, скиллы (средняя модель)
+#    hermes           — агент: читает БД (read-only), классифицирует на лету,
+#                       дайджесты в Telegram, поиск источников
+#  Классификация теперь на Hermes (отдельный analyzer убран). Hermes ходит
+#  в БД только через read-only роль hermes_ro — ни DROP, ни записи.
 #
 #  Лимиты ресурсов и логов заданы под общий тестовый сервер.
 #  Память/данные durable: ./pgdata и ./hermes_data — bind-mount на хосте,
@@ -31,6 +33,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    # Только loopback хоста — снаружи невидимо. Нужно, чтобы host-сетевой
+    # Hermes (через Postgres-MCP) дотянулся до базы по 127.0.0.1.
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./pgdata:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -69,19 +75,6 @@ services:
     mem_limit: 256m
     logging: *default-logging
 
-  analyzer:
-    build:
-      context: .
-      dockerfile: analyzer/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    cpus: 0.25
-    mem_limit: 384m
-    logging: *default-logging
-
   # Агент. Память/конфиг/скиллы — в ./hermes_data (bind-mount, durable).
   # Секреты Hermes (ключ модели, токен Telegram) задаются мастером setup
   # в ./hermes_data, НЕ через наш .env. Перед up нужно один раз прогнать setup.
@@ -102,5 +95,7 @@ services:
     mem_limit: 1024m
     logging: *default-logging
 
-# = 3200 МБ (~43%). Это ПОТОЛКИ, не резерв: коллекторы бьют вспышками, hermes
-# почти всё время простаивает, так что реальное потребление заметно ниже.
+# Сервер: 4 vCPU / 7.4 ГБ (≈3.8 ГБ уже заняты другими).
+# Потолки (4 сервиса): CPU 0.5+0.5+0.25+0.5 = 1.75 (~44%),
+# RAM 512+1024+256+1024 = 2816 МБ (~38%). Это ПОТОЛКИ, не резерв:
+# коллекторы бьют вспышками, hermes почти всё время простаивает.
