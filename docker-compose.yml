@@ -6,7 +6,7 @@
 #    analyzer         — массовая классификация (дешёвая модель Cloud.ru)
 #    hermes           — агент: gateway/Telegram, поиск, скиллы (средняя модель)
 #
-#  Лимиты ресурсов захардкожены под стек: # гарантированно сидеть ниже 40-50% машины.
+#  Лимиты ресурсов захардкожены под стек: гарантированно сидеть ниже 40-50% машины.
 #
 #  Запуск БД:        docker compose up -d --build postgres
 #  Запуск всего:     docker compose up -d --build
@@ -51,7 +51,7 @@ services:
       postgres:
         condition: service_healthy
     cpus: 1.0
-    mem_limit: 1536m # Chromium/Playwright прожорлив — самый тяжёлый сервис
+    mem_limit: 1024m # Chromium/Playwright прожорлив — самый тяжёлый сервис
     logging: *default-logging
 
   max-collector:
