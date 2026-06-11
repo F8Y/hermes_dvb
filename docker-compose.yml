@@ -68,6 +68,8 @@ services:
       dockerfile: collectors/max/Dockerfile
     restart: unless-stopped
     env_file: .env
+    volumes:
+      - ./max_session:/session # SQLite-сессия PyMax (durable, в .gitignore)
     depends_on:
       postgres:
         condition: service_healthy
