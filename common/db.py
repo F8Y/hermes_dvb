@@ -1,3 +1,8 @@
+"""Общие помощники БД для коллекторов и анализатора.
+
+Только синхронный psycopg (v3). Зависимости: psycopg[binary].
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -35,6 +40,7 @@ def connect():
 
 
 def normalize_text(text: str) -> str:
+    """Нормализация для content_hash: lower + схлопывание пробелов."""
     return _WS_RE.sub(" ", (text or "").strip().lower())
 
 
@@ -44,6 +50,7 @@ def content_hash(platform: str, text: str) -> str:
 
 
 def author_hash(author_id: str | None) -> str | None:
+    """Псевдонимизация автора: соль + id -> sha256. Личность не восстановима."""
     if not author_id:
         return None
     salt = os.environ.get("AUTHOR_HASH_SALT", "")
@@ -59,6 +66,7 @@ def get_or_create_source(
     status: str = "candidate",
     discovered_by: str = "seed",
 ) -> int:
+    """Вернуть id источника, создав при отсутствии (idempotent)."""
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -86,7 +94,18 @@ def insert_raw_item(
     metrics: dict | None = None,
     raw_json: dict | None = None,
 ) -> int | None:
-    chash = content_hash(platform, text)
+    """Вставить сырой item с дедупом по content_hash.
+
+    Возвращает id новой строки либо None, если дубликат (уже был).
+    Дедуп: по external_id (id поста/сообщения) если он есть — иначе по тексту.
+    Это важно для MAX, где короткие сообщения часто повторяются дословно.
+    """
+    if external_id:
+        chash = hashlib.sha256(
+            f"{platform}:id:{external_id}".encode("utf-8")
+        ).hexdigest()
+    else:
+        chash = content_hash(platform, text)
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -132,6 +151,7 @@ def fetch_unanalyzed(conn, limit: int) -> list[dict]:
 
 
 def save_finding(conn, item_id: int, finding: dict, model: str) -> None:
+    """Записать разбор и пометить item обработанным (в одной транзакции)."""
     with conn.cursor() as cur:
         cur.execute(
             """

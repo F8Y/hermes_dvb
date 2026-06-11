@@ -3,12 +3,11 @@
 Принципы:
   * Читаем историю только тех чатов/каналов, где аккаунт УЖЕ состоит.
     В каналы вступает человек вручную в приложении MAX (join — самое
-    банабельное действие, userbot его не делает). Коллектор только читает.
-  * Методов отправки здесь нет by design.
+    небезопасное действие, userbot его не делает). Коллектор только читает.
   * Сетевой трафик идёт через RU mobile SOCKS5 (proxychains на уровне
     контейнера, см. entrypoint.sh) — PyMax про прокси не знает.
 
-Поля PyMax-сообщений (time/sender/...) могут приходить неполными — берём
+Поля PyMax-сообщений (time/sender/...) могут приходить неполными — берутся
 защитно через getattr и проверяем на throwaway-аккаунте перед боевым.
 """
 
@@ -125,8 +124,8 @@ class MaxUserbotClient:
             if since and posted and posted <= since:
                 continue
             text = getattr(m, "text", None) or ""
-            sender = getattr(m, "sender", None)
-            author = getattr(sender, "id", None) if sender is not None else None
+            # sender в MAX — это сразу int-id пользователя, не объект
+            author = getattr(m, "sender", None)
             try:
                 raw = m.model_dump(mode="json") if hasattr(m, "model_dump") else {}
             except Exception:  # noqa: BLE001
