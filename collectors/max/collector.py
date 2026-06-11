@@ -17,7 +17,12 @@ from datetime import datetime, timezone
 
 from pymax import Client, ExtraConfig
 
-from common.db import connect, insert_raw_item, list_active_sources
+from common.db import (
+    connect,
+    insert_raw_item,
+    list_active_sources,
+    register_chat_source,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("max")
@@ -62,6 +67,34 @@ def _resolve(chats, handle: str):
     return None
 
 
+def _chat_id_for(handle: str, chats):
+    """Если handle — числовой chat_id, берём его напрямую; иначе фуззи-резолв."""
+    h = str(handle)
+    if h.lstrip("-").isdigit():
+        return int(h)
+    return _resolve(chats, h)
+
+
+def _register_joined(conn, chats) -> None:
+    """Авто-регистрация всех joined чатов/каналов как КАНДИДАТОВ (не DIALOG)."""
+    for c in chats or []:
+        ctype = str(getattr(c, "type", "") or "").upper()
+        if ctype not in ("CHAT", "CHANNEL"):
+            continue
+        cid = getattr(c, "id", None)
+        title = getattr(c, "title", None)
+        if cid is None or not title:
+            continue
+        register_chat_source(
+            conn,
+            platform="max",
+            kind="channel" if ctype == "CHANNEL" else "chat",
+            handle=str(cid),
+            title=title,
+            link=getattr(c, "link", None),
+        )
+
+
 async def poll_once():
     try:
         chats = await client.fetch_chats()
@@ -70,12 +103,19 @@ async def poll_once():
         return
 
     with connect() as conn:
+        # авто-регистрация всех joined чатов как кандидатов (статус не трогаем)
+        _register_joined(conn, chats)
+        conn.commit()
+
         sources = list_active_sources(conn, "max")
         if not sources:
-            log.info("нет активных источников MAX (ждём подтверждения человеком)")
+            log.info(
+                "нет активных источников MAX — кандидаты записаны, "
+                "подтвердите нужные (status='active')"
+            )
             return
         for src in sources:
-            cid = _resolve(chats, src["handle"])
+            cid = _chat_id_for(src["handle"], chats)
             if cid is None:
                 log.warning(
                     "источник %s: аккаунт не состоит — вступите в приложении MAX",

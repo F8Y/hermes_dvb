@@ -186,3 +186,31 @@ def list_active_sources(conn, platform: str) -> list[dict]:
             (platform,),
         )
         return cur.fetchall()
+
+
+def register_chat_source(
+    conn, *, platform: str, kind: str, handle: str, title: str, link: str | None = None
+) -> None:
+    """Зарегистрировать чат, где аккаунт уже состоит, как КАНДИДАТА.
+
+    handle = стабильный id чата (для точного резолва). Статус существующих
+    источников НЕ трогаем (если вы перевели в active/rejected — так и останется),
+    только обновляем title. Idempotent.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO sources (platform, kind, handle, title, status,
+                                 discovered_by, meta)
+            VALUES (%s, %s, %s, %s, 'candidate', 'collector', %s)
+            ON CONFLICT (platform, kind, handle) DO UPDATE
+              SET title = EXCLUDED.title, updated_at = now()
+            """,
+            (
+                platform,
+                kind,
+                handle,
+                title,
+                json.dumps({"link": link} if link else {}, ensure_ascii=False),
+            ),
+        )
