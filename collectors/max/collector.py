@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from datetime import datetime, timezone
 
 from pymax import Client, ExtraConfig
@@ -29,6 +30,8 @@ log = logging.getLogger("max")
 
 POLL = int(os.environ.get("MAX_POLL_INTERVAL", "300"))
 BACKWARD = int(os.environ.get("MAX_BACKWARD", "50"))
+# пауза между чтениями разных источников (анти-троттлинг + гигиена)
+SOURCE_DELAY = float(os.environ.get("MAX_SOURCE_DELAY", "5"))
 
 client = Client(
     phone=os.environ.get("MAX_PHONE"),
@@ -152,6 +155,7 @@ async def poll_once():
                     stored += 1
             conn.commit()
             log.info("источник %s: новых %d", src["handle"], stored)
+            await asyncio.sleep(SOURCE_DELAY)  # не читать источники залпом
 
 
 @client.on_start()
@@ -172,4 +176,10 @@ async def on_start(_client):
 
 
 if __name__ == "__main__":
-    asyncio.run(client.start())
+    try:
+        asyncio.run(client.start())
+    except Exception as e:  # noqa: BLE001
+        # PyMax падает на нераспарсиваемом кадре (напр. error-код -14).
+        # Пауза перед выходом, чтобы рестарт контейнера не спамил логинами.
+        log.error("сессия завершилась: %s — пауза 60с перед рестартом", e)
+        time.sleep(60)
