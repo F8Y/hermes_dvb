@@ -1,5 +1,5 @@
 -- ======================================================================
---  hermes-dvb — схема БД
+--  sber-monitor — схема БД
 --  Слои:
 --    sources    — откуда читаем (каналы/чаты/хэштеги), статус заходов
 --    raw_items  — landing: ВСЁ собранное (хранится один раз, можно
@@ -15,9 +15,16 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- ----------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sources (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    platform TEXT NOT NULL CHECK (platform IN ('tiktok', 'max')),
+    platform TEXT NOT NULL CHECK (platform IN ('tiktok', 'max', 'vk', 'ok')),
     kind TEXT NOT NULL CHECK (
-        kind IN ('channel', 'chat', 'user', 'hashtag', 'keyword')
+        kind IN (
+            'channel',
+            'chat',
+            'user',
+            'hashtag',
+            'keyword',
+            'group'
+        )
     ),
     handle TEXT NOT NULL,
     -- @канал / #хэштег / поисковый запрос
@@ -45,7 +52,7 @@ CREATE TABLE IF NOT EXISTS sources (
 -- ----------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS raw_items (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    platform TEXT NOT NULL CHECK (platform IN ('tiktok', 'max')),
+    platform TEXT NOT NULL CHECK (platform IN ('tiktok', 'max', 'vk', 'ok')),
     source_id BIGINT REFERENCES sources(id) ON DELETE
     SET NULL,
         external_id TEXT,
