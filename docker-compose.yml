@@ -49,34 +49,6 @@ services:
     mem_limit: 512m
     logging: *default-logging
 
-  tiktok-collector:
-    build:
-      context: .
-      dockerfile: collectors/tiktok/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    cpus: 0.5
-    mem_limit: 1024m # Chromium прожорлив, но скрапит вспышками и спит между ними
-    logging: *default-logging
-
-  max-collector:
-    build:
-      context: .
-      dockerfile: collectors/max/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./max_session:/session # SQLite-сессия PyMax (durable, в .gitignore)
-    depends_on:
-      postgres:
-        condition: service_healthy
-    cpus: 0.25
-    mem_limit: 256m
-    logging: *default-logging
-
   # Агент. Память/конфиг/скиллы — в ./hermes_data (bind-mount, durable).
   # Секреты Hermes (ключ модели, токен Telegram) задаются мастером setup
   # в ./hermes_data, НЕ через наш .env. Перед up нужно один раз прогнать setup.
