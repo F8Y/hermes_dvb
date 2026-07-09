@@ -7,6 +7,25 @@
 --  Применить под владельцем:
 --    docker compose exec -T postgres psql -U dvb -d dvbmon < db/vk_schema.sql
 -- ======================================================================
+-- ---- Расширяем platform/kind на существующих таблицах (идемпотентно) ----
+ALTER TABLE sources DROP CONSTRAINT IF EXISTS sources_platform_check;
+ALTER TABLE sources
+ADD CONSTRAINT sources_platform_check CHECK (platform IN ('tiktok', 'max', 'vk', 'ok'));
+ALTER TABLE sources DROP CONSTRAINT IF EXISTS sources_kind_check;
+ALTER TABLE sources
+ADD CONSTRAINT sources_kind_check CHECK (
+        kind IN (
+            'channel',
+            'chat',
+            'user',
+            'hashtag',
+            'keyword',
+            'group'
+        )
+    );
+ALTER TABLE raw_items DROP CONSTRAINT IF EXISTS raw_items_platform_check;
+ALTER TABLE raw_items
+ADD CONSTRAINT raw_items_platform_check CHECK (platform IN ('tiktok', 'max', 'vk', 'ok'));
 -- ---- Посты со стен сообществ (wall.get) --------------------------------
 CREATE TABLE IF NOT EXISTS vk_posts (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
